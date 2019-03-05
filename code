@@ -1,0 +1,167 @@
+import pandas as pd
+import numpy as np
+
+df = pd.read_csv('./questionnaire.csv')
+df = df.set_index('uid')
+print(df.head())
+
+#test one
+
+user_mat = np.random.permutation(range(1,101)).reshape(10,10)
+#test two
+
+initial_population = []
+for x in range(10):
+    user_mat = np.random.permutation(range(1,101)).reshape(10,10)
+    initial_population.append(user_mat)
+    
+    
+from scipy.spatial.distance import  pdist
+
+def calculate_interest_distance(person,*others):
+    people = [df.ix[person, 0:3]]
+    for other in others:
+        if other:
+            people.append(df.ix[other,0:3])
+    people = np.array(people)
+    return np.average(pdist(people,metric='cityblock')) if len(people) > 1 else 0 # test four
+
+
+def get_element_safe(sequence,position):
+    try:
+        return sequence.item(position)
+    except IndexError:
+        return None
+
+# test five
+def calculate_chromosome_fitness(chromosome):
+    fitnesses = []
+    for index, gene in np.ndenumerate(chromosome):
+        next_to = calculate_interest_distance(gene,get_element_safe(chromosome,(index[0],index[1] -1 )),
+                                              get_element_safe(chromosome,(index[0],index[1] + 1)))
+        in_front = calculate_interest_distance(gene,get_element_safe(chromosome,(index[0]-1,index[1])))
+        behind = calculate_interest_distance(gene,get_element_safe(chromosome,(index[0]+1,index[1])))
+        fitnesses.append(sum([next_to,in_front,behind])/3)
+    return np.average(fitnesses)
+
+generations = []
+for chromosome in initial_population:
+    generations.append({'generation':0,'fitness':calculate_chromosome_fitness(chromosome),'chromosome':chromosome,
+                        'active':True})
+# test six
+generations = sorted(generations,key=lambda x:x['fitness'])
+
+import random
+def recombine(mother,father):
+    child = np.ones((10,10)) * (-1)
+    for index,uid in enumerate(df.index):
+        if uid <= 50:
+            position = np.where(mother == uid)
+        else:
+            position = np.where(father == uid)
+        if child[position] != -1:
+            filtered = np.where(np.equal(child,-1))
+            position = random.choice(list(zip(filtered[0],filtered[1])))
+        child[position] = uid
+    return child
+
+import random
+def mutate_chromosome(chromosome):
+    first = (random.randrange(0,10,1),random.randrange(0,10,1))
+    second =(random.randrange(0,10,1),random.randrange(0,10,1))
+    chromosome[first[0],first[1]],chromosome[second[0],second[1]] = chromosome[second[0],second[1]],chromosome[first[0],
+    first[1]]
+    return chromosome
+
+import matplotlib.pyplot as plt
+
+def draw_population(population, generation):
+    # get_ids = np.vectorize(get_id)
+    figure, axes = plt.subplots(1, 10, figsize=(20, 3))
+    for index, chromosome in enumerate(population):
+        ids = chromosome
+        axes[index].imshow(ids, interpolation="nearest", cmap=plt.cm.plasma)
+        subplot_title = "Chromosome " + str(index)
+        axes[index].set_title(subplot_title)
+    plot_title = "Generation " + str(generation)
+    figure.suptitle(plot_title)
+    plt.show()
+
+# draw_population(initial_population,0)
+
+import copy
+most_fit = []
+max_fitness = None
+fittest_chromosome = None
+
+def get_chromosomes_in_generation(generations,generation_num):
+    generation = list(filter(lambda k:k['generation'] == generation_num,generations))
+    return sorted(generation,key=lambda k:k["fitness"])
+def sort_chromosomes(generation, most_fit):
+    max_fitness = generation[0]['fitness']
+    most_fit.append(max_fitness)
+    fittest_chromosome = generation[0]['chromosome']
+    return most_fit, fittest_chromosome
+
+
+def copy_chromosomes(generation, generations):
+    new_generation = copy.deepcopy(generation)
+
+    new_generation[-1]['active'] = False
+    new_generation[-2]['active'] = False
+
+    active = list(filter(lambda k: k['active'] == True, new_generation))
+    for chromosome in active:
+        chromosome['generation'] += 1
+
+    generations.extend(active)
+    return generations
+
+
+def mate_chromosomes(generation, generations, generation_num):
+    child = recombine(generation[0]['chromosome'], generation[1]['chromosome'])
+    child = mutate_chromosome(child)
+    generations.append({
+        "active": True,
+        "chromosome": child,
+        "generation": generation_num + 1,
+        "fitness": calculate_chromosome_fitness(child)
+    })
+
+    other = recombine(generation[2]['chromosome'], generation[3]['chromosome'])
+    other = mutate_chromosome(chromosome)
+    generations.append({
+        "active": True,
+        "chromosome": other,
+        "generation": generation_num + 1,
+        "fitness": calculate_chromosome_fitness(other)
+    })
+    return generations
+def run_ga(input_generations):
+    fittest = []
+    max_fitness = None
+    fittest_chromo = None
+    for generation_num in range(50):
+        if max_fitness and max_fitness < 5:
+            break
+
+        generation = get_chromosomes_in_generation(input_generations, generation_num)
+        fittest, fittest_chromo = sort_chromosomes(generation, most_fit)
+
+        input_generations = copy_chromosomes(generation, input_generations)
+        input_generations = mate_chromosomes(generation, input_generations, generation_num)
+
+        draw_population(map(lambda d: d['chromosome'],
+                        get_chromosomes_in_generation(input_generations, generation_num)), generation_num)
+
+    return fittest, fittest_chromo
+
+
+most_fit, fittest_chromosome = run_ga(generations)
+
+
+plt.plot(most_fit)
+plt.title("Most Fit Trend")
+plt.xlabel("Generation")
+plt.ylabel("Fitness")
+plt.show()
